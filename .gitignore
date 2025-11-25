@@ -1,0 +1,13 @@
+# Node modules
+/node_modules
+
+# Local Database
+mileage_tracker.db
+
+# Logs
+*.log
+
+# Environment
+.env
+
+/github
