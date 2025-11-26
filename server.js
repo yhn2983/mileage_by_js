@@ -64,6 +64,7 @@ app.post("/upload-mileage", async (req, res) => {
       data: { text },
     } = await Tesseract.recognize(imageBuffer, "eng", {
       logger: (m) => console.log(m),
+      tessedit_char_whitelist: "0123456789.",
     });
 
     console.log("--- 原始 OCR 辨識結果: ---");
@@ -139,6 +140,6 @@ app.listen(PORT, async () => {
   await initializeDatabase();
 
   console.log("✅ OCR 引擎將在收到第一個請求時自動啟動。");
-  console.log(`伺服器正在 http://localhost:${PORT} 上運行`);
+  console.log(`伺服器正在運行`);
   console.log("請在手機或電腦瀏覽器中打開此網址。");
 });
