@@ -38,19 +38,51 @@ async function setupCamera() {
 // --- 2. 拍照與上傳 ---
 snapButton.addEventListener("click", () => {
   statusText.textContent = "📸 正在拍照並處理影像...";
-  snapButton.disabled = true; // 避免重複點擊
+  snapButton.disabled = true; // 避免重複點擊，禁用按鈕
   mileageText.textContent = "處理中...";
 
-  // 將當前影像畫到 Canvas 上
-  const context = canvas.getContext("2d");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // --- 截圖邏輯的調整開始 ---
 
-  // 將 Canvas 內容轉換為 Base64 格式的 JPEG 圖片
+  const context = canvas.getContext("2d");
+
+  // 取得影片串流的實際寬高
+  const videoW = video.videoWidth;
+  const videoH = video.videoHeight;
+
+  // 定義要截取的區域（ROI - Region of Interest）
+  // 假設我們只需要中間 50% 的寬度和高度
+  const cropFactor = 0.5; // 截取畫面中間 50%
+  const cropW = videoW * cropFactor;
+  const cropH = videoH * cropFactor;
+
+  // 計算截取的起始點 (讓截圖區域置中)
+  const sx = (videoW - cropW) / 2; // Source X
+  const sy = (videoH - cropH) / 2; // Source Y
+
+  // 將 Canvas 的尺寸設定為截圖區域的尺寸
+  canvas.width = cropW;
+  canvas.height = cropH;
+
+  // 將影像串流（從 (sx, sy) 點開始，寬度 cropW, 高度 cropH 的區域）
+  // 畫到 Canvas 上（從 (0, 0) 點開始，完全填充 canvas）
+  context.drawImage(
+    video,
+    sx,
+    sy,
+    cropW,
+    cropH, // 來源 (Source) 矩形
+    0,
+    0,
+    cropW,
+    cropH // 目標 (Destination) 矩形
+  );
+
+  // --- 截圖邏輯的調整結束 ---
+
+  // 將 Canvas 內容轉換為 Base64 格式的 JPEG 圖片 (0.9 是圖片品質)
   const imageDataURL = canvas.toDataURL("image/jpeg", 0.9);
 
-  // 將 Base64 資料傳送給後端
+  // 將 Base64 資料傳送給後端進行 OCR 處理
   uploadImage(imageDataURL);
 });
 
