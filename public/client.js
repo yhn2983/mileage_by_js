@@ -114,39 +114,78 @@ function drawCanvas(imageData) {
   }
 }
 
+// --- 輔助函式：取得滑鼠或觸控的座標 ---
+function getEventLocation(e) {
+  // 判斷是觸控事件還是滑鼠事件
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  // 取得 Canvas 在螢幕上的位置
+  const rect = cropCanvas.getBoundingClientRect();
+
+  // 計算在 Canvas 內的相對座標 (考慮到 Canvas 可能被 CSS 縮放)
+  const x = (clientX - rect.left) * (cropCanvas.width / rect.width);
+  const y = (clientY - rect.top) * (cropCanvas.height / rect.height);
+
+  return { x, y };
+}
+
 // --- 4. 截圖事件處理 (MouseDown/MouseMove/MouseUp) ---
 cropCanvas.addEventListener("mousedown", (e) => {
-  isCropping = true;
-  // 取得滑鼠在 Canvas 內的相對位置
-  const rect = cropCanvas.getBoundingClientRect();
-  startX = (e.clientX - rect.left) * (cropCanvas.width / rect.width);
-  startY = (e.clientY - rect.top) * (cropCanvas.height / rect.height);
-  cropRect = { x: startX, y: startY, w: 0, h: 0 };
-  submitCropButton.disabled = true;
-});
+  const startCrop = (e) => {
+    e.preventDefault(); // 防止手機預設行為 (例如捲動)
+    isCropping = true;
 
-cropCanvas.addEventListener("mousemove", (e) => {
-  if (!isCropping) return;
+    const { x, y } = getEventLocation(e);
 
-  const rect = cropCanvas.getBoundingClientRect();
-  const currentX = (e.clientX - rect.left) * (cropCanvas.width / rect.width);
-  const currentY = (e.clientY - rect.top) * (cropCanvas.height / rect.height);
+    startX = x;
+    startY = y;
+    cropRect = { x: startX, y: startY, w: 0, h: 0 };
+    submitCropButton.disabled = true;
+  };
 
-  // 計算截圖矩形
-  cropRect.x = Math.min(startX, currentX);
-  cropRect.y = Math.min(startY, currentY);
-  cropRect.w = Math.abs(currentX - startX);
-  cropRect.h = Math.abs(currentY - startY);
+  // 綁定事件
+  cropCanvas.addEventListener("mousedown", startCrop);
+  cropCanvas.addEventListener("touchstart", startCrop);
 
-  drawCanvas(currentImage); // 重新繪製影像和截圖框
-});
+  // ------------------------------------
+  // B. 拖曳中 (MouseMove / TouchMove)
+  // ------------------------------------
+  const moveCrop = (e) => {
+    if (!isCropping) return;
 
-cropCanvas.addEventListener("mouseup", () => {
-  isCropping = false;
-  if (cropRect.w > 10 && cropRect.h > 10) {
-    // 確保框足夠大
-    submitCropButton.disabled = false;
-  }
+    // 在觸控事件中，瀏覽器可能會嘗試捲動，所以必須阻止預設行為
+    e.preventDefault();
+
+    const { x: currentX, y: currentY } = getEventLocation(e);
+
+    // 計算截圖矩形
+    cropRect.x = Math.min(startX, currentX);
+    cropRect.y = Math.min(startY, currentY);
+    cropRect.w = Math.abs(currentX - startX);
+    cropRect.h = Math.abs(currentY - startY);
+
+    drawCanvas(currentImage); // 重新繪製影像和截圖框
+  };
+
+  // 綁定事件
+  cropCanvas.addEventListener("mousemove", moveCrop);
+  cropCanvas.addEventListener("touchmove", moveCrop);
+
+  // ------------------------------------
+  // C. 結束截圖 (MouseUp / TouchEnd)
+  // ------------------------------------
+  const endCrop = () => {
+    isCropping = false;
+    if (cropRect.w > 10 && cropRect.h > 10) {
+      // 確保框足夠大
+      submitCropButton.disabled = false;
+    }
+  };
+
+  // 綁定事件
+  cropCanvas.addEventListener("mouseup", endCrop);
+  cropCanvas.addEventListener("touchend", endCrop);
 });
 
 // --- 5. 確認並上傳截圖 ---
