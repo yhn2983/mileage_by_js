@@ -27,8 +27,16 @@ let currentImage; // 暫存拍照後的影像數據
 // --- 1. 啟動鏡頭 ---
 async function setupCamera() {
   try {
-    videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-    video.srcObject = videoStream;
+    // [核心修正] 重新加入對 facingMode 的要求
+    // 請求瀏覽器使用 'environment' (後置鏡頭)
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment", // 要求後置鏡頭
+      },
+    });
+    videoStream = stream; // 更新影像串流變數
+    video.srcObject = stream;
+
     video.onloadedmetadata = () => {
       video.play();
       snapButton.disabled = false;
@@ -37,7 +45,21 @@ async function setupCamera() {
       cropView.style.display = "none";
     };
   } catch (err) {
-    statusText.textContent = "❌ 錯誤：無法存取您的鏡頭。";
+    // [備用方案] 如果後置鏡頭存取失敗，則退回使用任意鏡頭
+    console.error("無法存取後置鏡頭，嘗試使用任意鏡頭:", err);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+      });
+      videoStream = stream;
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        video.play();
+      };
+      statusText.textContent = "⚠️ 僅能使用預設鏡頭。";
+    } catch (fallbackError) {
+      statusText.textContent = "❌ 錯誤：無法存取您的任何鏡頭。";
+    }
   }
 }
 
