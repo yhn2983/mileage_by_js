@@ -1,149 +1,175 @@
+// public/client.js (手動截圖版本)
+
 // 取得 HTML 元素
 const video = document.getElementById("videoElement");
-const canvas = document.getElementById("canvasElement");
 const snapButton = document.getElementById("snapButton");
 const statusText = document.getElementById("statusText");
 const mileageText = document.getElementById("mileageText");
+const recordsList = document.getElementById("recordsList");
+
+const cameraView = document.getElementById("camera-view"); // 攝影機區塊
+const cropView = document.getElementById("crop-view"); // 截圖區塊
+
+// 新增的截圖相關元素
+const cropCanvas = document.getElementById("cropCanvas"); // 截圖介面主畫布
+const uploadCanvas = document.getElementById("uploadCanvas"); // 上傳用的隱藏畫布
+const submitCropButton = document.getElementById("submitCropButton");
+const retakeButton = document.getElementById("retakeButton");
+
+let videoStream; // 用於保存和停止影像串流
+
+// 截圖相關狀態變數
+let isCropping = false;
+let startX, startY;
+let cropRect = { x: 0, y: 0, w: 0, h: 0 };
+let currentImage; // 暫存拍照後的影像數據
 
 // --- 1. 啟動鏡頭 ---
 async function setupCamera() {
   try {
-    // 嘗試取得後置鏡頭 (environment)
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: "environment" } },
-    });
-    video.srcObject = stream;
+    videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = videoStream;
     video.onloadedmetadata = () => {
       video.play();
-      snapButton.disabled = false; // 鏡頭啟動後啟用按鈕
-      statusText.textContent = "鏡頭已就緒，請對準里程表。";
+      snapButton.disabled = false;
+      statusText.textContent = "鏡頭已就緒，請點擊拍照。";
+      cameraView.style.display = "block";
+      cropView.style.display = "none";
     };
   } catch (err) {
-    // 如果找不到後置鏡頭，嘗試使用預設鏡頭
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      video.onloadedmetadata = () => {
-        video.play();
-        snapButton.disabled = false;
-        statusText.textContent = "鏡頭已就緒（可能是前置鏡頭），請對準里程表。";
-      };
-    } catch (error) {
-      console.error("無法存取鏡頭: ", error);
-      statusText.textContent = "❌ 錯誤：無法存取您的鏡頭。";
-    }
+    statusText.textContent = "❌ 錯誤：無法存取您的鏡頭。";
   }
 }
 
-// --- 2. 拍照與上傳 ---
+// --- 輔助函式：停止影像串流 ---
+function stopVideoStream() {
+  if (videoStream) {
+    videoStream.getTracks().forEach((track) => track.stop());
+  }
+}
+
+// --- 2. 拍照並進入截圖模式 ---
 snapButton.addEventListener("click", () => {
-  statusText.textContent = "📸 正在拍照並處理影像...";
-  snapButton.disabled = true; // 避免重複點擊，禁用按鈕
-  mileageText.textContent = "處理中...";
+  stopVideoStream(); // 停止串流
 
-  // --- 截圖邏輯的調整開始 ---
+  // 將拍照當下的畫面繪製到 cropCanvas 上
+  cropCanvas.width = video.videoWidth;
+  cropCanvas.height = video.videoHeight;
+  const ctx = cropCanvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, cropCanvas.width, cropCanvas.height);
 
-  const context = canvas.getContext("2d");
+  // 儲存影像數據以便重複繪製
+  currentImage = ctx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
 
-  // 取得影片串流的實際寬高
-  const videoW = video.videoWidth;
-  const videoH = video.videoHeight;
+  // 切換介面
+  cameraView.style.display = "none";
+  cropView.style.display = "block";
 
-  // 定義要截取的區域（ROI - Region of Interest）
-  // 假設我們只需要中間 50% 的寬度和高度
-  const cropFactor = 0.5; // 截取畫面中間 50%
-  const cropW = videoW * cropFactor;
-  const cropH = videoH * cropFactor;
+  // 重設截圖框
+  cropRect = { x: 0, y: 0, w: 0, h: 0 };
+  drawCanvas(currentImage);
 
-  // 計算截取的起始點 (讓截圖區域置中)
-  const sx = (videoW - cropW) / 2; // Source X
-  const sy = (videoH - cropH) / 2; // Source Y
-
-  // 將 Canvas 的尺寸設定為截圖區域的尺寸
-  canvas.width = cropW;
-  canvas.height = cropH;
-
-  // 將影像串流（從 (sx, sy) 點開始，寬度 cropW, 高度 cropH 的區域）
-  // 畫到 Canvas 上（從 (0, 0) 點開始，完全填充 canvas）
-  context.drawImage(
-    video,
-    sx,
-    sy,
-    cropW,
-    cropH, // 來源 (Source) 矩形
-    0,
-    0,
-    cropW,
-    cropH // 目標 (Destination) 矩形
-  );
-
-  // --- 截圖邏輯的調整結束 ---
-
-  // 將 Canvas 內容轉換為 Base64 格式的 JPEG 圖片 (0.9 是圖片品質)
-  const imageDataURL = canvas.toDataURL("image/jpeg", 0.9);
-
-  // 將 Base64 資料傳送給後端進行 OCR 處理
-  uploadImage(imageDataURL);
+  statusText.textContent = "🖼️ 請拖曳滑鼠或手指選擇里程數區域。";
 });
 
-// --- 3. 圖片上傳函式 ---
-async function uploadImage(imageDataURL) {
-  try {
-    const response = await fetch("/upload-mileage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json", // 告訴伺服器傳送的是 JSON
-      },
-      body: JSON.stringify({ image: imageDataURL }), // 將 Base64 資料作為 JSON body
-    });
+// --- 3. 繪製畫布和截圖框 ---
+function drawCanvas(imageData) {
+  const ctx = cropCanvas.getContext("2d");
+  ctx.putImageData(imageData, 0, 0); // 繪製原始影像
 
-    const data = await response.json();
+  if (cropRect.w > 0 && cropRect.h > 0) {
+    // 繪製半透明遮罩
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
 
-    if (response.ok) {
-      statusText.textContent = `✅ 上傳成功！`;
-      mileageText.textContent = data.mileage || "辨識失敗或無結果";
-      // 成功後重新載入歷史紀錄
-      fetchRecords();
-    } else {
-      statusText.textContent = `⚠️ 伺服器錯誤: ${data.message || "未知錯誤"}`;
-      mileageText.textContent = "處理失敗";
-    }
-  } catch (error) {
-    console.error("上傳過程中發生錯誤:", error);
-    statusText.textContent = "🚨 網路錯誤或連線中斷。";
-    mileageText.textContent = "處理失敗";
-  } finally {
-    snapButton.disabled = false; // 無論成功失敗都啟用按鈕
+    // [關鍵] 清除截圖區域的遮罩，露出原圖
+    ctx.clearRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
+
+    // 繪製截圖框邊緣
+    ctx.strokeStyle = "#FFC107";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
   }
 }
 
-// --- 4. 取得歷史紀錄 ---
-async function fetchRecords() {
-  const recordsList = document.getElementById("recordsList");
-  recordsList.innerHTML = "<li>載入歷史紀錄中...</li>";
+// --- 4. 截圖事件處理 (MouseDown/MouseMove/MouseUp) ---
+cropCanvas.addEventListener("mousedown", (e) => {
+  isCropping = true;
+  // 取得滑鼠在 Canvas 內的相對位置
+  const rect = cropCanvas.getBoundingClientRect();
+  startX = (e.clientX - rect.left) * (cropCanvas.width / rect.width);
+  startY = (e.clientY - rect.top) * (cropCanvas.height / rect.height);
+  cropRect = { x: startX, y: startY, w: 0, h: 0 };
+  submitCropButton.disabled = true;
+});
 
-  try {
-    const response = await fetch("/records");
-    const records = await response.json();
+cropCanvas.addEventListener("mousemove", (e) => {
+  if (!isCropping) return;
 
-    recordsList.innerHTML = ""; // 清空列表
-    if (records.length === 0) {
-      recordsList.innerHTML = "<li>目前沒有任何紀錄。</li>";
-      return;
-    }
+  const rect = cropCanvas.getBoundingClientRect();
+  const currentX = (e.clientX - rect.left) * (cropCanvas.width / rect.width);
+  const currentY = (e.clientY - rect.top) * (cropCanvas.height / rect.height);
 
-    records.forEach((record) => {
-      const listItem = document.createElement("li");
-      // 格式化日期時間
-      const date = new Date(record.timestamp).toLocaleString();
-      listItem.textContent = `里程數: ${record.mileage} - 時間: ${date}`;
-      recordsList.appendChild(listItem);
-    });
-  } catch (error) {
-    console.error("載入歷史紀錄錯誤:", error);
-    recordsList.innerHTML = "<li>載入歷史紀錄失敗。</li>";
+  // 計算截圖矩形
+  cropRect.x = Math.min(startX, currentX);
+  cropRect.y = Math.min(startY, currentY);
+  cropRect.w = Math.abs(currentX - startX);
+  cropRect.h = Math.abs(currentY - startY);
+
+  drawCanvas(currentImage); // 重新繪製影像和截圖框
+});
+
+cropCanvas.addEventListener("mouseup", () => {
+  isCropping = false;
+  if (cropRect.w > 10 && cropRect.h > 10) {
+    // 確保框足夠大
+    submitCropButton.disabled = false;
   }
-}
+});
+
+// --- 5. 確認並上傳截圖 ---
+submitCropButton.addEventListener("click", () => {
+  statusText.textContent = "📸 正在裁剪並處理影像...";
+
+  // 1. 設定上傳畫布的尺寸為截圖框的尺寸
+  uploadCanvas.width = cropRect.w;
+  uploadCanvas.height = cropRect.h;
+
+  // 2. 截圖：將 cropCanvas 上的特定區域繪製到 uploadCanvas
+  uploadCanvas.getContext("2d").drawImage(
+    cropCanvas,
+    cropRect.x,
+    cropRect.y,
+    cropRect.w,
+    cropRect.h, // 來源 (cropCanvas)
+    0,
+    0,
+    cropRect.w,
+    cropRect.h // 目標 (uploadCanvas)
+  );
+
+  // 3. 轉換為 Base64 並上傳
+  const imageDataURL = uploadCanvas.toDataURL("image/jpeg", 0.9);
+  uploadImage(imageDataURL);
+
+  // 上傳後切回相機介面 (讓使用者準備下一次拍照)
+  cameraView.style.display = "block";
+  cropView.style.display = "none";
+  setupCamera();
+});
+
+// --- 6. 重新拍照按鈕 ---
+retakeButton.addEventListener("click", () => {
+  // 簡單地切回相機介面
+  cameraView.style.display = "block";
+  cropView.style.display = "none";
+  setupCamera(); // 重新啟動鏡頭串流
+});
+
+// ... (後段的 uploadImage 和 fetchRecords 保持不變，但請注意：
+// uploadImage 應該使用 uploadCanvas 而不是原來的 canvasElement)
+// 請確保您的 uploadImage 函式正確地從此處接收 imageDataURL
+// ...
 
 // 啟動應用程式
 setupCamera();

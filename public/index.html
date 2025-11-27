@@ -1,33 +1,39 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
     <title>汽車里程數記錄器</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <h1>🚗 里程數拍照記錄</h1>
-    
-    <video id="videoElement" autoplay playsinline style="width: 100%; max-width: 400px; border: 1px solid #ccc;"></video>
-    
-    <button id="snapButton" disabled>拍照並上傳</button>
-    
-    <canvas id="canvasElement" style="display: none;"></canvas>
-    
-    <h2>最新記錄：</h2>
-    <div id="result">
-        <p>辨識中的里程數: <span id="mileageText">...</span></p>
-        <p>上傳狀態: <span id="statusText">等待拍照...</span></p>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>🚗 里程數記錄器</h1>
+
+    <div id="camera-view">
+      <video id="videoElement" autoplay muted playsinline></video>
+      <button id="snapButton">拍照並暫停</button>
     </div>
-    
-    <hr>
-    
-    <h2>📊 歷史紀錄</h2>
-    <ul id="recordsList">
-        <li>載入中...</li>
-    </ul>
+
+    <div id="crop-view" style="display: none">
+      <h2>手動截取里程數區域</h2>
+
+      <canvas id="cropCanvas"></canvas>
+
+      <div id="crop-tools">
+        <button id="submitCropButton">確認並上傳</button>
+        <button id="retakeButton">重新拍照</button>
+      </div>
+    </div>
+
+    <hr />
+
+    <p id="statusText">系統狀態...</p>
+    <p>辨識結果: <strong id="mileageText">N/A</strong></p>
+
+    <h2>最新記錄</h2>
+    <ul id="recordsList"></ul>
+
+    <canvas id="uploadCanvas" style="display: none"></canvas>
 
     <script src="client.js"></script>
-</body>
+  </body>
 </html>

@@ -1,0 +1,20 @@
+/* public/style.css (新增 for crop) */
+
+#camera-view {
+  /* 預設顯示 */
+  display: block;
+}
+
+#cropCanvas {
+  /* 讓 Canvas 充滿其容器，並加上邊框 */
+  width: 100%;
+  height: auto;
+  border: 1px solid #ccc;
+  cursor: crosshair; /* 顯示十字游標 */
+  max-width: 600px;
+}
+
+#crop-view {
+  text-align: center;
+  padding: 10px;
+}
